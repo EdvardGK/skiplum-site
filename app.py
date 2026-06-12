@@ -78,6 +78,8 @@ else:
     st.caption("Juster markøren under — bygg og last ned vises her når konfigurasjonen er klar.")
 
 # ── the custom UI component (returns the live config) ────────────────────────────
-config = _marker_component(inherited=ss.get("inherited"), default=None)
+# A stable key keeps the iframe from remounting (and resetting its JS state, e.g.
+# the local/world toggle) when sibling widgets above it change.
+config = _marker_component(inherited=ss.get("inherited"), default=None, key="marker")
 if config:
     ss["config"] = config
