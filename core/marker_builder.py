@@ -212,12 +212,24 @@ def get_or_create_marker_type(f, owner_hist, project_name):
     return t
 
 
-def build_marker(f, owner_hist, body_ctx, placement, cfg: MarkerConfig,
-                 seed_suffix, x, y, z, top_label):
-    """Assemble one cylinder marker (geometry + styles + typed element)."""
+def _local_placement(f, x, y, z, rel_to=None):
+    """IfcLocalPlacement at (x,y,z) — the object's insertion point (its basepoint)."""
+    axes = f.create_entity(
+        "IfcAxis2Placement3D", Location=_pt(f, x, y, z),
+        Axis=f.create_entity("IfcDirection", DirectionRatios=[0.0, 0.0, 1.0]),
+        RefDirection=f.create_entity("IfcDirection", DirectionRatios=[1.0, 0.0, 0.0]))
+    return f.create_entity("IfcLocalPlacement", PlacementRelTo=rel_to, RelativePlacement=axes)
+
+
+def build_marker(f, owner_hist, body_ctx, cfg: MarkerConfig, seed_suffix, pos, top_label,
+                 rel_to=None):
+    """Assemble one cylinder marker. Geometry is centered at the object's local
+    origin (0,0,0); the ObjectPlacement inserts it AT `pos` — so the object's
+    basepoint matches the marker's center coordinate."""
+    x, y, z = pos
     radius = cfg.radius_m
     height = cfg.height_m
-    z_bot, z_top = z, z + height
+    z_bot, z_top = 0.0, height          # geometry centered at local origin
 
     cyl_rgb = hex_to_rgb(cfg.cylinder_color)
     arrow_rgb = hex_to_rgb(cfg.arrow_color)
@@ -228,12 +240,12 @@ def build_marker(f, owner_hist, body_ctx, placement, cfg: MarkerConfig,
 
     body_items = []
 
-    cyl = build_cylinder_mesh(f, x, y, z_bot, z_top, radius, r_in=cfg.inner_radius_m)
+    cyl = build_cylinder_mesh(f, 0.0, 0.0, z_bot, z_top, radius, r_in=cfg.inner_radius_m)
     if cyl is not None:
         f.create_entity("IfcStyledItem", Item=cyl, Styles=[cyl_style])
         body_items.append(cyl)
 
-    arrow = build_north_arrow_mesh(f, x, y, z_bot, z_top, radius)
+    arrow = build_north_arrow_mesh(f, 0.0, 0.0, z_bot, z_top, radius)
     if arrow is not None:
         f.create_entity("IfcStyledItem", Item=arrow, Styles=[arrow_style])
         body_items.append(arrow)
@@ -242,9 +254,9 @@ def build_marker(f, owner_hist, body_ctx, placement, cfg: MarkerConfig,
     lines = [l for l in ([top_label] + cfg.text.wall_rows()) if l]
     wall_char_h = wall_char_height(height)
     text_radius = radius + 0.02
-    for line, zlvl in zip(lines, wall_band_zs(z, height, len(lines))):
+    for line, zlvl in zip(lines, wall_band_zs(0.0, height, len(lines))):
         mesh = build_voxel_text_on_cylinder(
-            f, x, y, zlvl, line, text_radius,
+            f, 0.0, 0.0, zlvl, line, text_radius,
             char_height=wall_char_h, voxel_depth=0.04, face_compass_deg=180.0,
         )
         if mesh is not None:
@@ -264,7 +276,7 @@ def build_marker(f, owner_hist, body_ctx, placement, cfg: MarkerConfig,
         OwnerHistory=owner_hist,
         Name=f"{seed_suffix}: {top_label}" if top_label else seed_suffix,
         ObjectType=f"Skiplum prosjektmarkør - {seed_suffix}",
-        ObjectPlacement=placement,
+        ObjectPlacement=_local_placement(f, x, y, z, rel_to=rel_to),
         Representation=prod_def,
         PredefinedType="USERDEFINED",
     )
@@ -312,12 +324,13 @@ def attach_pset(f, owner_hist, seed, related, pset_name, properties):
 
 def build_georef_pset(f, owner_hist, cfg, marker, punkt_type, marker_offset):
     """marker_offset = this marker's offset from the basepoint (0,0,0 for Nullpunkt,
-    (dx,dy,dz) for the control marker). Local* report the actual model-frame coords
-    (which differ by export mode); E/N/H are the absolute world coords (mode-independent)."""
+    (dx,dy,dz) for the control marker).
+
+    Local* ALWAYS report the local-frame offset (basepoint-relative) — independent of
+    whether the model was exported local or in world coords. E/N/H are the absolute
+    world coords (basepoint world coords + offset)."""
     g = cfg.georef
-    bx, by, bz = cfg.basepoint_xyz()
     ox, oy, oz = marker_offset
-    mx, my, mz = bx + ox, by + oy, bz + oz                  # model-frame (geometry) coords
     wx, wy, wz = g.easting + ox, g.northing + oy, g.height + oz  # absolute world coords
     props = [
         ("PunktType", punkt_type, "IfcLabel"),
@@ -325,9 +338,9 @@ def build_georef_pset(f, owner_hist, cfg, marker, punkt_type, marker_offset):
         ("CRS", g.crs_label, "IfcLabel"),
         ("GeodeticDatum", "EUREF89", "IfcLabel"),
         ("VerticalDatum", "NN2000", "IfcLabel"),
-        ("LocalX_m", round(float(mx), 4), "IfcReal"),
-        ("LocalY_m", round(float(my), 4), "IfcReal"),
-        ("LocalZ_m", round(float(mz), 4), "IfcReal"),
+        ("LocalX_m", round(float(ox), 4), "IfcReal"),
+        ("LocalY_m", round(float(oy), 4), "IfcReal"),
+        ("LocalZ_m", round(float(oz), 4), "IfcReal"),
         ("E_m", round(float(wx), 4), "IfcReal"),
         ("N_m", round(float(wy), 4), "IfcReal"),
         ("H_m", round(float(wz), 4), "IfcReal"),
@@ -450,24 +463,22 @@ def build_marker_ifc(config) -> ifcopenshell.file:
     cfg = config if isinstance(config, MarkerConfig) else MarkerConfig.from_dict(config)
 
     f, project, owner_hist, body_ctx = new_file(cfg)
-    storey, placement = add_spatial(f, project, owner_hist, cfg)
+    storey, _ = add_spatial(f, project, owner_hist, cfg)
 
     bx, by, bz = cfg.basepoint_xyz()
     base = build_marker(
-        f, owner_hist, body_ctx, placement, cfg,
-        seed_suffix="Nullpunkt", x=bx, y=by, z=bz,
+        f, owner_hist, body_ctx, cfg,
+        seed_suffix="Nullpunkt", pos=(bx, by, bz),
         top_label=cfg.text.top_label,
     )
     related = [base]
 
     ctrl = None
     if cfg.control.enabled:
-        cx = bx + cfg.control.dx
-        cy = by + cfg.control.dy
-        cz = bz + cfg.control.dz
         ctrl = build_marker(
-            f, owner_hist, body_ctx, placement, cfg,
-            seed_suffix="Rotasjonspunkt", x=cx, y=cy, z=cz,
+            f, owner_hist, body_ctx, cfg,
+            seed_suffix="Rotasjonspunkt",
+            pos=(bx + cfg.control.dx, by + cfg.control.dy, bz + cfg.control.dz),
             top_label=cfg.control.top_label,
         )
         related.append(ctrl)
