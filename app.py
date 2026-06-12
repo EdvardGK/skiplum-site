@@ -56,27 +56,28 @@ if up is not None and ss.get("_last_upload") != up.name:
     except Exception as e:
         st.error(f"Kunne ikke lese IFC: {e}")
 
-# ── the custom UI component (returns the live config) ────────────────────────────
-config = _marker_component(inherited=ss.get("inherited"), default=None)
-if config:
-    ss["config"] = config
-
-# ── build + download (Streamlit) ─────────────────────────────────────────────────
+# ── build + download toolbar (Streamlit) — kept ABOVE the component so it stays in
+#    view; uses the latest config the component returned (no scrolling to act). ──────
 cfg_dict = ss.get("config")
 if cfg_dict:
     cfg = MarkerConfig.from_dict(cfg_dict)
     default_name = f"{cfg.spatial.project_name.replace(' ', '_')}_BIMK_Nullpunkt.ifc"
-    c1, c2 = st.columns([3, 1])
+    c1, c2, c3 = st.columns([3, 1, 1])
     fname = c1.text_input("Filnavn", default_name, label_visibility="collapsed")
     if c2.button("⚙️ Bygg IFC", type="primary", use_container_width=True):
         with st.spinner("Bygger IFC…"):
             f = build_marker_ifc(cfg)
             ss["ifc_data"], ss["ifc_name"] = ifc_to_bytes(f), fname
-        st.success(f"{len(f.by_type('IfcGeographicElement'))} markør(er) · "
-                   f"{len(ss['ifc_data'])/1024:.0f} KB · {len(cfg.spatial.storeys)} etasje(r)")
+        st.toast(f"Bygget {len(f.by_type('IfcGeographicElement'))} markør(er) · "
+                 f"{len(ss['ifc_data'])/1024:.0f} KB · {len(cfg.spatial.storeys)} etasje(r)")
     if ss.get("ifc_data"):
-        st.download_button("⬇️ Last ned IFC", data=ss["ifc_data"],
+        c3.download_button("⬇️ Last ned IFC", data=ss["ifc_data"],
                            file_name=ss.get("ifc_name", default_name),
                            mime="application/x-step", use_container_width=True)
 else:
-    st.caption("Juster markøren over — bygg og last ned vises når konfigurasjonen er klar.")
+    st.caption("Juster markøren under — bygg og last ned vises her når konfigurasjonen er klar.")
+
+# ── the custom UI component (returns the live config) ────────────────────────────
+config = _marker_component(inherited=ss.get("inherited"), default=None)
+if config:
+    ss["config"] = config

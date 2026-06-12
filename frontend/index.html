@@ -159,11 +159,15 @@
 function stSend(type, data){ window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:type}, data), "*"); }
 function setValue(v){ stSend("streamlit:setComponentValue", {value:v, dataType:"json"}); }
 function setHeight(){ stSend("streamlit:setFrameHeight", {height: document.body.scrollHeight}); }
-let _inheritedApplied = false;
+let _inheritedApplied = false, _initPushed = false;
 window.addEventListener("message", (e)=>{
   if(!e.data || e.data.type!=="streamlit:render") return;
   const args = (e.data.args)||{};
-  if(args.inherited && !_inheritedApplied){ applyInherited(args.inherited); _inheritedApplied=true; pushConfig(); }
+  let changed = false;
+  if(args.inherited && !_inheritedApplied){ applyInherited(args.inherited); _inheritedApplied=true; changed=true; }
+  // Send the initial config only once Streamlit is ready (first render event) —
+  // values sent during boot (before ready) are dropped.
+  if(!_initPushed || changed){ _initPushed=true; pushConfig(); }
   setHeight();
 });
 
@@ -379,8 +383,13 @@ function pushConfig(){
 crsSel.onchange=()=>{ updateMap(); pushConfig(); };
 
 // ───────────────────────── boot ─────────────────────────
-initThree(); pushConfig(); stSend("streamlit:componentReady",{apiVersion:1}); setHeight();
-setTimeout(setHeight, 400);
+stSend("streamlit:componentReady",{apiVersion:1});   // ready FIRST
+initThree();
+updateMarker(buildConfig(), previewWhich);            // initial 3D render (no send yet)
+setHeight();
+// send the initial config once Streamlit is ready (values sent pre-ready are dropped)
+setTimeout(()=>{ pushConfig(); setHeight(); }, 350);
+setTimeout(()=>{ if(!_initPushed){ pushConfig(); } setHeight(); }, 900);
 </script>
 </body>
 </html>
