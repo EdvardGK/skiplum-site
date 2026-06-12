@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{
+    --gold:#E69930; --ink:#1f2937; --muted:#6b7280; --line:#e6e1d6;
+    --card:#ffffff; --bg:#f3f1ec; --accent:#9a6a1c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:transparent;}
+  .wrap{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:14px;align-items:start;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px;}
+  .card h3{margin:0 0 8px;font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);}
+  label{display:block;font-size:.72rem;color:var(--muted);margin:6px 0 2px;}
+  input[type=text],input[type=number],select{
+    width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:.85rem;background:#fbfaf7;color:var(--ink);}
+  input:focus,select:focus{outline:2px solid var(--gold);border-color:var(--gold);}
+  .row{display:flex;gap:8px;}
+  .row>div{flex:1;}
+  .swatches{display:flex;gap:18px;align-items:flex-start;margin-top:4px;}
+  .sw{position:relative;text-align:center;}
+  .sw .ico{font-size:1.05rem;color:var(--muted);line-height:1;}
+  .circle{width:38px;height:38px;border-radius:50%;border:2px solid rgba(0,0,0,.25);
+    box-shadow:0 1px 3px rgba(0,0,0,.15);cursor:pointer;margin:4px auto 0;}
+  .pop{position:absolute;z-index:30;top:84px;left:50%;transform:translateX(-50%);
+    background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);display:none;width:148px;}
+  .pop.open{display:block;}
+  .presets{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px;}
+  .preset{width:26px;height:26px;border-radius:6px;border:1px solid rgba(0,0,0,.15);cursor:pointer;}
+  .toggle{display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer;}
+  .toggle input{width:auto;}
+  #view{width:100%;height:430px;border-radius:10px;background:linear-gradient(#fbfaf7,#eee8db);}
+  #map{width:100%;height:300px;border-radius:10px;}
+  .hint{font-size:.72rem;color:var(--muted);margin-top:6px;}
+  .results{border:1px solid var(--line);border-radius:8px;margin-top:4px;max-height:150px;overflow:auto;background:#fff;}
+  .results div{padding:6px 9px;font-size:.8rem;cursor:pointer;border-bottom:1px solid #f0ece2;}
+  .results div:hover{background:#faf6ec;}
+  .floors{font-size:.8rem;}
+  .floor{display:flex;gap:6px;margin-bottom:4px;}
+  .floor input{padding:5px 7px;}
+  .floor button,.addrow{border:1px solid var(--line);background:#fbfaf7;border-radius:7px;cursor:pointer;padding:5px 8px;font-size:.8rem;}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px;}
+  .seg button{flex:1;border:0;background:#fbfaf7;padding:7px;font-size:.78rem;cursor:pointer;}
+  .seg button.on{background:var(--gold);color:#fff;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- ── DESIGN ── -->
+  <div class="col">
+    <div class="card">
+      <h3>Geometri</h3>
+      <div class="row">
+        <div><label>Innvendig Ø (m)</label><input type="number" id="diameter" value="10" step="0.5" min="0.5"></div>
+        <div><label>Høyde (m)</label><input type="number" id="height" value="3" step="0.2" min="0.2"></div>
+      </div>
+      <label>Veggtykkelse (m)</label><input type="number" id="wall" value="0.5" step="0.1" min="0">
+      <div class="hint">Indre kant = Ø/2. Ringen vokser utover med veggtykkelsen — en R = Ø/2 markør i 0,0,z klasher ikke.</div>
+    </div>
+    <div class="card">
+      <h3>Farger</h3>
+      <div class="swatches">
+        <div class="sw"><div class="ico">◯</div><div class="circle" id="sw_cyl" data-key="cyl"></div>
+          <div class="pop" id="pop_cyl"><div class="presets"></div><input type="color" id="cp_cyl"></div></div>
+        <div class="sw"><div class="ico">⬆</div><div class="circle" id="sw_arrow" data-key="arrow"></div>
+          <div class="pop" id="pop_arrow"><div class="presets"></div><input type="color" id="cp_arrow"></div></div>
+        <div class="sw"><div class="ico">T</div><div class="circle" id="sw_text" data-key="text"></div>
+          <div class="pop" id="pop_text"><div class="presets"></div><input type="color" id="cp_text"></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Merketekst</h3>
+      <label>Topp-etikett</label><input type="text" id="top_label" value="Lokalt nullpunkt">
+      <label>Prosjektnavn + kortform</label><input type="text" id="row1" value="Prosjektnavn (PRO)">
+      <label>Tekst 1</label><input type="text" id="row2" value="Byggherre">
+      <label>Tekst 2</label><input type="text" id="row3" value="Info">
+    </div>
+    <div class="card">
+      <h3>Kontrollmarkør</h3>
+      <label class="toggle"><input type="checkbox" id="ctrl_on"> Inkluder rotasjons-/kontrollmarkør</label>
+      <div id="ctrl_box" style="display:none">
+        <label>Etikett</label><input type="text" id="ctrl_label" value="Lokal rotasjonskontroll">
+        <div class="row">
+          <div><label>ΔX</label><input type="number" id="ctrl_dx" value="50" step="1"></div>
+          <div><label>ΔY</label><input type="number" id="ctrl_dy" value="0" step="1"></div>
+          <div><label>ΔZ</label><input type="number" id="ctrl_dz" value="0" step="1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── VIEWER ── -->
+  <div class="col">
+    <div class="card">
+      <h3>Markør</h3>
+      <div class="seg" id="prev_tabs" style="display:none;margin-bottom:8px">
+        <button id="pv_null" class="on">Nullpunkt</button>
+        <button id="pv_ctrl">Rotasjonskontroll</button>
+      </div>
+      <div id="view"></div>
+      <div class="hint" id="stat"></div>
+    </div>
+  </div>
+
+  <!-- ── LOCATION + STRUCTURE ── -->
+  <div class="col">
+    <div class="card">
+      <h3>Plassering</h3>
+      <label class="toggle"><input type="checkbox" id="georef_on"> Georeferer markøren</label>
+      <div id="geo_box" style="display:none">
+        <label>Koordinatsystem (CRS)</label><select id="crs"></select>
+        <label>🔎 Søk adresse (Kartverket)</label><input type="text" id="addr" placeholder="Henrik Ibsens gate 90, Oslo">
+        <div class="results" id="addr_res" style="display:none"></div>
+        <div class="row">
+          <div><label>Øst / E (m)</label><input type="number" id="geo_e" value="0" step="1"></div>
+          <div><label>Nord / N (m)</label><input type="number" id="geo_n" value="0" step="1"></div>
+        </div>
+        <label>Høyde / H (m)</label><input type="number" id="geo_h" value="0" step="0.1">
+        <label>IFC-eksport</label>
+        <div class="seg"><button id="exp_local" class="on">Lokalt (0,0,0 + MapConversion)</button><button id="exp_world">Verdenskoordinater</button></div>
+        <div id="map" style="margin-top:8px;display:none"></div>
+      </div>
+      <div id="origin_box">
+        <div class="hint">Uten georef: markør i lokalt origo (redigerbart).</div>
+        <div class="row">
+          <div><label>X</label><input type="number" id="ox" value="0" step="1"></div>
+          <div><label>Y</label><input type="number" id="oy" value="0" step="1"></div>
+          <div><label>Z</label><input type="number" id="oz" value="0" step="1"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>IFC-struktur</h3>
+      <label>Prosjektnavn</label><input type="text" id="project_name" value="Prosjekt">
+      <div class="row">
+        <div><label>Tomt (Site)</label><input type="text" id="site_name" value="Tomt"></div>
+        <div><label>Bygning</label><input type="text" id="building_name" value="Bygning"></div>
+      </div>
+      <label>Etasjer (navn, kote)</label>
+      <div class="floors" id="floors"></div>
+      <button class="addrow" id="addfloor">+ etasje</button>
+      <label style="margin-top:8px">IFC-skjema</label>
+      <select id="schema"><option>IFC4</option><option>IFC2X3</option></select>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
+<script src="./crs_defs.js"></script>
+<script src="./voxel.js"></script>
+<script>
+// ───────────────────────── Streamlit component protocol ─────────────────────────
+function stSend(type, data){ window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:type}, data), "*"); }
+function setValue(v){ stSend("streamlit:setComponentValue", {value:v, dataType:"json"}); }
+function setHeight(){ stSend("streamlit:setFrameHeight", {height: document.body.scrollHeight}); }
+let _inheritedApplied = false;
+window.addEventListener("message", (e)=>{
+  if(!e.data || e.data.type!=="streamlit:render") return;
+  const args = (e.data.args)||{};
+  if(args.inherited && !_inheritedApplied){ applyInherited(args.inherited); _inheritedApplied=true; pushConfig(); }
+  setHeight();
+});
+
+// ───────────────────────── color presets ─────────────────────────
+const PRESETS=["#E69930","#FFE600","#3FA34D","#1E88E5","#E53935","#7E57C2","#2B2B2B","#FFFFFF"];
+const COLORS={cyl:"#E69930",arrow:"#26A69A",text:"#FFE600"};
+function paintSwatch(k){ document.getElementById("sw_"+k).style.background=COLORS[k]; }
+["cyl","arrow","text"].forEach(k=>{
+  const pop=document.getElementById("pop_"+k), grid=pop.querySelector(".presets"), cp=document.getElementById("cp_"+k);
+  PRESETS.forEach(hex=>{ const d=document.createElement("div"); d.className="preset"; d.style.background=hex;
+    d.onclick=()=>{COLORS[k]=hex; cp.value=hex; paintSwatch(k); pop.classList.remove("open"); pushConfig();}; grid.appendChild(d);});
+  cp.value=COLORS[k];
+  cp.oninput=()=>{COLORS[k]=cp.value; paintSwatch(k); pushConfig();};
+  document.getElementById("sw_"+k).onclick=(ev)=>{ ev.stopPropagation();
+    document.querySelectorAll(".pop").forEach(p=>{if(p!==pop)p.classList.remove("open");}); pop.classList.toggle("open"); setHeight();};
+  paintSwatch(k);
+});
+document.body.onclick=()=>document.querySelectorAll(".pop").forEach(p=>p.classList.remove("open"));
+
+// ───────────────────────── CRS dropdown + proj4 ─────────────────────────
+const crsSel=document.getElementById("crs");
+CRS_LIST.forEach(([epsg,short,label])=>{ const o=document.createElement("option"); o.value=epsg; o.textContent=`${short} — ${label} (EPSG:${epsg})`; crsSel.appendChild(o); });
+crsSel.value=5110;
+Object.entries(CRS_DEFS).forEach(([epsg,def])=>proj4.defs("EPSG:"+epsg, def));
+function llToCrs(lat,lon,epsg){ const [e,n]=proj4("EPSG:4258","EPSG:"+epsg,[lon,lat]); return [e,n]; }
+function crsToLl(e,n,epsg){ const [lon,lat]=proj4("EPSG:"+epsg,"EPSG:4258",[e,n]); return [lat,lon]; }
+
+// ───────────────────────── floors editor ─────────────────────────
+let floors=[{name:"Referanse",elevation:0}];
+function renderFloors(){
+  const box=document.getElementById("floors"); box.innerHTML="";
+  floors.forEach((f,i)=>{
+    const row=document.createElement("div"); row.className="floor";
+    const n=document.createElement("input"); n.type="text"; n.value=f.name; n.placeholder="Etasje";
+    n.oninput=()=>{floors[i].name=n.value; pushConfig();};
+    const el=document.createElement("input"); el.type="number"; el.value=f.elevation; el.step="0.1"; el.style.maxWidth="80px";
+    el.oninput=()=>{floors[i].elevation=parseFloat(el.value)||0; pushConfig();};
+    const del=document.createElement("button"); del.textContent="×";
+    del.onclick=()=>{floors.splice(i,1); if(!floors.length)floors=[{name:"Referanse",elevation:0}]; renderFloors(); pushConfig();};
+    row.append(n,el,del); box.appendChild(row);
+  });
+  setHeight();
+}
+document.getElementById("addfloor").onclick=()=>{floors.push({name:"Etasje "+(floors.length+1),elevation:0}); renderFloors(); pushConfig();};
+renderFloors();
+
+// ───────────────────────── inherited (from Python upload) ─────────────────────────
+function applyInherited(inh){
+  if(inh.project_name) document.getElementById("project_name").value=inh.project_name;
+  if(inh.site_name) document.getElementById("site_name").value=inh.site_name;
+  if(inh.building_name) document.getElementById("building_name").value=inh.building_name;
+  if(inh.storeys && inh.storeys.length){ floors=inh.storeys.map(s=>({name:s.name||"",elevation:+s.elevation||0})); renderFloors(); }
+  if(inh.easting!=null && inh.northing!=null){
+    document.getElementById("georef_on").checked=true; toggleGeo();
+    if(inh.epsg && CRS_DEFS[inh.epsg]) crsSel.value=inh.epsg;
+    document.getElementById("geo_e").value=inh.easting;
+    document.getElementById("geo_n").value=inh.northing;
+    document.getElementById("geo_h").value=inh.height||0;
+    updateMap();
+  }
+}
+
+// ───────────────────────── address search (Kartverket) ─────────────────────────
+let addrTimer=null;
+document.getElementById("addr").oninput=function(){
+  clearTimeout(addrTimer); const q=this.value.trim(); const res=document.getElementById("addr_res");
+  if(q.length<3){res.style.display="none";return;}
+  addrTimer=setTimeout(async()=>{
+    try{
+      const r=await fetch(`https://ws.geonorge.no/adresser/v1/sok?sok=${encodeURIComponent(q)}&treffPerSide=8`);
+      const j=await r.json(); res.innerHTML="";
+      (j.adresser||[]).forEach(a=>{
+        const rp=a.representasjonspunkt||{}; if(rp.lat==null)return;
+        const label=[a.adressetekst,(a.postnummer||"")+" "+(a.poststed||""),a.kommunenavn].filter(Boolean).join(", ");
+        const d=document.createElement("div"); d.textContent=label;
+        d.onclick=()=>{ const epsg=+crsSel.value; const [e,n]=llToCrs(rp.lat,rp.lon,epsg);
+          document.getElementById("geo_e").value=e.toFixed(3); document.getElementById("geo_n").value=n.toFixed(3);
+          res.style.display="none"; document.getElementById("addr").value=label; updateMap(); pushConfig();};
+        res.appendChild(d);
+      });
+      res.style.display=j.adresser&&j.adresser.length?"block":"none"; setHeight();
+    }catch(err){ res.innerHTML="<div>Søk feilet</div>"; res.style.display="block"; }
+  },350);
+};
+
+// ───────────────────────── three.js preview ─────────────────────────
+let scene,camera,renderer,controls,markerGroup;
+function initThree(){
+  const el=document.getElementById("view");
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(45, el.clientWidth/el.clientHeight, 0.1, 5000);
+  camera.up.set(0,0,1);
+  renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  renderer.setSize(el.clientWidth, el.clientHeight); renderer.setPixelRatio(window.devicePixelRatio);
+  el.appendChild(renderer.domElement);
+  scene.add(new THREE.AmbientLight(0xffffff,0.75));
+  const dl=new THREE.DirectionalLight(0xffffff,0.7); dl.position.set(1,-1,2); scene.add(dl);
+  controls=new THREE.OrbitControls(camera, renderer.domElement);
+  markerGroup=new THREE.Group(); scene.add(markerGroup);
+  (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene,camera); })();
+  new ResizeObserver(()=>{ renderer.setSize(el.clientWidth,el.clientHeight); camera.aspect=el.clientWidth/el.clientHeight; camera.updateProjectionMatrix(); }).observe(el);
+}
+function ringMesh(R,wall,h,color){
+  const shape=new THREE.Shape(); shape.absarc(0,0,R,0,Math.PI*2,false);
+  if(wall>0 && wall<R){ const hole=new THREE.Path(); hole.absarc(0,0,R-wall,0,Math.PI*2,true); shape.holes.push(hole); }
+  const geo=new THREE.ExtrudeGeometry(shape,{depth:h,bevelEnabled:false,curveSegments:72});
+  return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color,metalness:0.1,roughness:0.75}));
+}
+function arrowMesh(R,h,color){
+  const L=R*0.45,w=R*0.22; const s=new THREE.Shape();
+  s.moveTo(0,R+L); s.lineTo(-w,R); s.lineTo(w,R); s.lineTo(0,R+L);
+  const geo=new THREE.ExtrudeGeometry(s,{depth:h,bevelEnabled:false});
+  return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color,metalness:0.1,roughness:0.75}));
+}
+let _camInit=false;
+function textMesh(c, which){
+  const topLabel = which==="control" ? c.control.top_label : c.text.top_label;
+  const specs = window.markerTextSpecs({diameter_m:c.diameter_m, height_m:c.height_m, wall_thickness_m:c.wall_thickness_m,
+    text:{top_label:topLabel, row1:c.text.row1, row2:c.text.row2, row3:c.text.row3}});
+  if(!specs.length) return null;
+  const s0=specs[0];
+  const geo=new THREE.BoxGeometry(2*s0.ht, 2*s0.hr, 2*s0.hv);
+  const mat=new THREE.MeshStandardMaterial({color:c.text_color, metalness:0.05, roughness:0.6});
+  const im=new THREE.InstancedMesh(geo, mat, specs.length);
+  const m=new THREE.Matrix4(), xA=new THREE.Vector3(), yA=new THREE.Vector3(), zA=new THREE.Vector3(0,0,1);
+  specs.forEach((s,i)=>{ xA.set(s.tx,s.ty,0); yA.set(s.rx,s.ry,0); m.makeBasis(xA,yA,zA); m.setPosition(s.bx,s.by,s.z); im.setMatrixAt(i,m); });
+  im.instanceMatrix.needsUpdate=true;
+  return im;
+}
+function updateMarker(c, which){
+  if(!scene)return;
+  while(markerGroup.children.length) markerGroup.remove(markerGroup.children[0]);
+  const wall=c.wall_thickness_m, h=c.height_m, R=c.diameter_m/2 + wall;  // R = outer (inner d/2 + wall)
+  markerGroup.add(ringMesh(R,wall,h,c.cylinder_color));
+  markerGroup.add(arrowMesh(R,h,c.arrow_color));
+  const tm=textMesh(c, which); if(tm) markerGroup.add(tm);
+  if(!_camInit){ const d=Math.max(R*2.4, h*2); camera.position.set(d, -d*1.15, d*0.8); controls.target.set(0,0,h/2); controls.update(); _camInit=true; }
+}
+
+// ───────────────────────── leaflet map ─────────────────────────
+let lmap,lcirc,lmark,lctrl;
+function updateMap(){
+  const on=document.getElementById("georef_on").checked;
+  const mapDiv=document.getElementById("map");
+  const e=parseFloat(document.getElementById("geo_e").value)||0, n=parseFloat(document.getElementById("geo_n").value)||0;
+  if(!on || (!e && !n)){ mapDiv.style.display="none"; return; }
+  mapDiv.style.display="block";
+  const epsg=+crsSel.value; let lat,lon; try{[lat,lon]=crsToLl(e,n,epsg);}catch(err){return;}
+  if(!lmap){ lmap=L.map(mapDiv).setView([lat,lon],18);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:20,attribution:"© OSM"}).addTo(lmap); }
+  setTimeout(()=>lmap.invalidateSize(),50);
+  lmap.setView([lat,lon],lmap.getZoom()||18);
+  const R=(parseFloat(document.getElementById("diameter").value)||10)/2 + (parseFloat(document.getElementById("wall").value)||0);
+  if(lcirc)lmap.removeLayer(lcirc); lcirc=L.circle([lat,lon],{radius:R,color:COLORS.cyl,fillColor:COLORS.cyl,fillOpacity:.55}).addTo(lmap);
+  if(lmark)lmap.removeLayer(lmark); lmark=L.marker([lat,lon],{icon:dotIcon(COLORS.cyl)}).addTo(lmap);
+  setHeight();
+}
+function dotIcon(color){
+  return L.divIcon({className:"", iconSize:[18,18], iconAnchor:[9,9],
+    html:`<div style="width:18px;height:18px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`});
+}
+
+// ───────────────────────── toggles ─────────────────────────
+function toggleGeo(){ const on=document.getElementById("georef_on").checked;
+  document.getElementById("geo_box").style.display=on?"block":"none";
+  document.getElementById("origin_box").style.display=on?"none":"block"; setHeight(); }
+document.getElementById("georef_on").onchange=()=>{toggleGeo(); updateMap(); pushConfig();};
+let previewWhich="nullpunkt";
+function setPv(){ document.getElementById("pv_null").classList.toggle("on",previewWhich==="nullpunkt");
+  document.getElementById("pv_ctrl").classList.toggle("on",previewWhich==="control"); }
+document.getElementById("pv_null").onclick=()=>{previewWhich="nullpunkt";setPv();pushConfig();};
+document.getElementById("pv_ctrl").onclick=()=>{previewWhich="control";setPv();pushConfig();};
+document.getElementById("ctrl_on").onchange=function(){
+  document.getElementById("ctrl_box").style.display=this.checked?"block":"none";
+  document.getElementById("prev_tabs").style.display=this.checked?"flex":"none";
+  if(!this.checked){ previewWhich="nullpunkt"; setPv(); }
+  setHeight(); pushConfig(); };
+document.getElementById("exp_local").onclick=()=>{setExport(true);}; document.getElementById("exp_world").onclick=()=>{setExport(false);};
+let exportLocal=true;
+function setExport(local){ exportLocal=local;
+  document.getElementById("exp_local").classList.toggle("on",local); document.getElementById("exp_world").classList.toggle("on",!local); pushConfig(); }
+
+// ───────────────────────── config assembly ─────────────────────────
+function val(id){return document.getElementById(id).value;}
+function num(id){return parseFloat(document.getElementById(id).value)||0;}
+function buildConfig(){
+  const epsg=+crsSel.value; const crsLabel=(CRS_LIST.find(c=>c[0]===epsg)||[,,""])[2];
+  return {
+    diameter_m:num("diameter"), height_m:num("height"), wall_thickness_m:num("wall"),
+    cylinder_color:COLORS.cyl, arrow_color:COLORS.arrow, text_color:COLORS.text,
+    text:{top_label:val("top_label"),row1:val("row1"),row2:val("row2"),row3:val("row3")},
+    spatial:{project_name:val("project_name"),site_name:val("site_name"),building_name:val("building_name"),
+             storeys:floors.map(f=>({name:f.name,elevation:f.elevation}))},
+    control:{enabled:document.getElementById("ctrl_on").checked,top_label:val("ctrl_label"),dx:num("ctrl_dx"),dy:num("ctrl_dy"),dz:num("ctrl_dz")},
+    georef:{enabled:document.getElementById("georef_on").checked,epsg:epsg,crs_label:crsLabel,
+            easting:num("geo_e"),northing:num("geo_n"),height:num("geo_h"),export_local:exportLocal},
+    origin:{x:num("ox"),y:num("oy"),z:num("oz")},
+    schema:val("schema"),
+  };
+}
+let pushTimer=null;
+function pushConfig(){
+  const c=buildConfig();
+  updateMarker(c, previewWhich);
+  document.getElementById("stat").textContent=`Ø ${c.diameter_m} m · h ${c.height_m} m · ${c.spatial.storeys.length} etasje(r) · ${c.georef.enabled?("EPSG:"+c.georef.epsg):"lokalt"}`;
+  clearTimeout(pushTimer); pushTimer=setTimeout(()=>setValue(c), 120);
+}
+// wire all simple inputs
+["diameter","height","wall","top_label","row1","row2","row3","project_name","site_name","building_name",
+ "geo_e","geo_n","geo_h","ox","oy","oz","ctrl_label","ctrl_dx","ctrl_dy","ctrl_dz","schema"].forEach(id=>{
+  document.getElementById(id).addEventListener("input", ()=>{ if(["geo_e","geo_n","diameter"].includes(id))updateMap(); pushConfig(); });
+});
+crsSel.onchange=()=>{ updateMap(); pushConfig(); };
+
+// ───────────────────────── boot ─────────────────────────
+initThree(); pushConfig(); stSend("streamlit:componentReady",{apiVersion:1}); setHeight();
+setTimeout(setHeight, 400);
+</script>
+</body>
+</html>
