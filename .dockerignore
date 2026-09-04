@@ -1,0 +1,10 @@
+.git
+__pycache__
+*.pyc
+*.pyo
+*.ifc
+.env
+worklog
+output
+make_thumbnail.py
+README.md
