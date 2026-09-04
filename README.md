@@ -1,4 +1,6 @@
-# Skiplum Site Marker
+# Lokasjonsplan-generator
+
+(Repo name `skiplum-site`; the app was "Skiplum Site Marker" until edkjo named it 2026-09-04.)
 
 Streamlit app to build a Skiplum **basepoint / nullpunkt cylinder marker** as an
 IFC4 file — the "golden cylinder" concept from HI90 and Sophies Minde, generalized
