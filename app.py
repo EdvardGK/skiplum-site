@@ -19,7 +19,7 @@ from core.config import MarkerConfig
 from core.marker_builder import build_marker_ifc, ifc_to_bytes
 from core.ifc_inspect import inspect_ifc_bytes
 
-st.set_page_config(page_title="Lokasjonsplan-generator", page_icon="🟡",
+st.set_page_config(page_title="Sitecast", page_icon="🟡",
                    layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
@@ -34,7 +34,7 @@ st.markdown("""
   .app-header h1 { margin:0; font-size:1.18rem; font-weight:700; }
   .app-header p { margin:0.1rem 0 0; font-size:0.76rem; opacity:0.82; }
 </style>
-<div class="app-header"><h1>🟡 Lokasjonsplan-generator</h1>
+<div class="app-header"><h1>🟡 Sitecast</h1>
 <p>Basepoint-/nullpunkt-markør med voxel-tekst, nordpil og georef → IFC4</p></div>
 """, unsafe_allow_html=True)
 
