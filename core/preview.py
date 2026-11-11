@@ -122,10 +122,17 @@ def _marker_traces(cfg: MarkerConfig, cx, cy, z, label, traces):
 
     # real voxel text — same generators / layout as the IFC builder
     specs = []
-    top_label = cfg.text.top_label if label == "Nullpunkt" else cfg.control.top_label
-    lines = [l for l in ([top_label] + cfg.text.wall_rows()) if l]
+    from .marker_builder import georef_rows
+    if label == "Nullpunkt":
+        top_label, offset = cfg.text.top_label, (0.0, 0.0, 0.0)
+    else:
+        top_label, offset = cfg.control.top_label, (cfg.control.dx, cfg.control.dy, cfg.control.dz)
+    lines = [l for l in ([top_label] + cfg.text.wall_rows() + georef_rows(cfg, offset)) if l]
     wch = wall_char_height(h)
-    for line, zl in zip(lines, wall_band_zs(z, h, len(lines))):
+    band = wall_band_zs(z, h, len(lines))
+    if len(band) > 1:
+        wch = min(wch, 0.85 * (band[0] - band[1]))
+    for line, zl in zip(lines, band):
         specs += list(iter_voxels_on_cylinder(cx, cy, zl, line, r + 0.02,
                                               char_height=wch, voxel_depth=0.04,
                                               face_compass_deg=180.0))

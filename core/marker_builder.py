@@ -221,8 +221,23 @@ def _local_placement(f, x, y, z, rel_to=None):
     return f.create_entity("IfcLocalPlacement", PlacementRelTo=rel_to, RelativePlacement=axes)
 
 
+def _num(v: float) -> str:
+    return f"{v:.3f}".rstrip("0").rstrip(".")
+
+
+def georef_rows(cfg: MarkerConfig, offset) -> list[str]:
+    """CRS, EPSG and this marker's world coordinates, as wall text rows.
+    `offset` is the marker's local offset from the basepoint. Empty without georef.
+    The voxel font has no ':', hence 'EPSG 5110'."""
+    g = cfg.georef
+    if not g.enabled:
+        return []
+    e, n, h = g.easting + offset[0], g.northing + offset[1], g.height + offset[2]
+    return [f"{g.crs_label} (EPSG {g.epsg})", f"E {_num(e)} N {_num(n)} H {_num(h)}"]
+
+
 def build_marker(f, owner_hist, body_ctx, cfg: MarkerConfig, seed_suffix, pos, top_label,
-                 rel_to=None):
+                 rel_to=None, extra_rows=()):
     """Assemble one cylinder marker. Geometry is centered at the object's local
     origin (0,0,0); the ObjectPlacement inserts it AT `pos` — so the object's
     basepoint matches the marker's center coordinate."""
@@ -251,10 +266,13 @@ def build_marker(f, owner_hist, body_ctx, cfg: MarkerConfig, seed_suffix, pos, t
         body_items.append(arrow)
 
     # All text wraps the wall (facing south): top label first, then the rows.
-    lines = [l for l in ([top_label] + cfg.text.wall_rows()) if l]
+    lines = [l for l in ([top_label] + cfg.text.wall_rows() + list(extra_rows)) if l]
     wall_char_h = wall_char_height(height)
+    zs = wall_band_zs(0.0, height, len(lines))
+    if len(zs) > 1:   # more rows than the default four: shrink so rows don't overlap
+        wall_char_h = min(wall_char_h, 0.85 * (zs[0] - zs[1]))
     text_radius = radius + 0.02
-    for line, zlvl in zip(lines, wall_band_zs(0.0, height, len(lines))):
+    for line, zlvl in zip(lines, zs):
         mesh = build_voxel_text_on_cylinder(
             f, 0.0, 0.0, zlvl, line, text_radius,
             char_height=wall_char_h, voxel_depth=0.04, face_compass_deg=180.0,
@@ -476,6 +494,7 @@ def build_marker_ifc(config) -> ifcopenshell.file:
         f, owner_hist, body_ctx, cfg,
         seed_suffix="Nullpunkt", pos=(bx, by, bz),
         top_label=cfg.text.top_label,
+        extra_rows=georef_rows(cfg, (0.0, 0.0, 0.0)),
     )
     related = [base]
 
@@ -486,6 +505,7 @@ def build_marker_ifc(config) -> ifcopenshell.file:
             seed_suffix="Rotasjonspunkt",
             pos=(bx + cfg.control.dx, by + cfg.control.dy, bz + cfg.control.dz),
             top_label=cfg.control.top_label,
+            extra_rows=georef_rows(cfg, (cfg.control.dx, cfg.control.dy, cfg.control.dz)),
         )
         related.append(ctrl)
 
