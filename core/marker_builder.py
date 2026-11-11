@@ -281,11 +281,17 @@ def build_marker(f, owner_hist, body_ctx, cfg: MarkerConfig, seed_suffix, pos, t
         PredefinedType="USERDEFINED",
     )
     mtype = get_or_create_marker_type(f, owner_hist, cfg.spatial.project_name)
-    f.create_entity(
-        "IfcRelDefinesByType",
-        GlobalId=stable_guid(f"{cfg.spatial.project_name}:type-rel:{seed_suffix}"),
-        OwnerHistory=owner_hist, RelatingType=mtype, RelatedObjects=[elem],
-    )
+    # IFC4: IfcTypeObject.Types is SET [0:1], so every marker of this type
+    # joins ONE relation instead of getting its own.
+    if mtype.Types:
+        rel = mtype.Types[0]
+        rel.RelatedObjects = list(rel.RelatedObjects) + [elem]
+    else:
+        f.create_entity(
+            "IfcRelDefinesByType",
+            GlobalId=stable_guid(f"{cfg.spatial.project_name}:type-rel:{seed_suffix}"),
+            OwnerHistory=owner_hist, RelatingType=mtype, RelatedObjects=[elem],
+        )
     return elem
 
 
