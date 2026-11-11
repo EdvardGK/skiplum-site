@@ -228,12 +228,12 @@ def _num(v: float) -> str:
 def georef_rows(cfg: MarkerConfig, offset) -> list[str]:
     """CRS, EPSG and this marker's world coordinates, as wall text rows.
     `offset` is the marker's local offset from the basepoint. Empty without georef.
-    The voxel font has no ':', hence 'EPSG 5110'."""
+    """
     g = cfg.georef
     if not g.enabled:
         return []
     e, n, h = g.easting + offset[0], g.northing + offset[1], g.height + offset[2]
-    return [f"{g.crs_label} (EPSG {g.epsg})", f"E {_num(e)} N {_num(n)} H {_num(h)}"]
+    return [f"{g.crs_label} (EPSG:{g.epsg})", f"E {_num(e)} N {_num(n)} H {_num(h)}"]
 
 
 def build_marker(f, owner_hist, body_ctx, cfg: MarkerConfig, seed_suffix, pos, top_label,
